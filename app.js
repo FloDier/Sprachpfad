@@ -118,18 +118,34 @@ function pickVoice(lang) {
   }
   return null;
 }
+let lastUtter = null; // Referenz halten, sonst verwirft Safari die Ausgabe manchmal
+let ttsUnlocked = false;
+function unlockTTS() { // iOS: Sprachausgabe muss einmal direkt durch eine Berührung gestartet werden
+  if (ttsUnlocked || !("speechSynthesis" in window)) return;
+  ttsUnlocked = true;
+  const u = new SpeechSynthesisUtterance(" "); u.volume = 0;
+  speechSynthesis.speak(u);
+  loadVoices();
+}
+document.addEventListener("touchend", unlockTTS, { passive: true });
+document.addEventListener("click", unlockTTS);
 function speak(text, opts = {}) {
-  if (!("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
+  if (!("speechSynthesis" in window)) { toast("Dieser Browser kann nicht vorlesen."); return; }
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  speechSynthesis.resume();
+  if (!voices.length) loadVoices();
   const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice(S.lang);
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = LANGS[S.lang].tts[0];
   u.rate = (opts.slow ? 0.6 : 1) * S.settings.rate;
+  u.volume = 1;
+  u.onerror = e => { if (e.error !== "interrupted" && e.error !== "canceled") toast("Vorlesen fehlgeschlagen: " + e.error); };
+  lastUtter = u;
   speechSynthesis.speak(u);
 }
 function voiceInfo() {
   const v = pickVoice(S.lang);
-  if (!v) return `⚠️ Keine ${LANGS[S.lang].name}-Stimme auf diesem Gerät gefunden.`;
+  if (!v) return `⚠️ Keine ${LANGS[S.lang].name}-Stimme gefunden (${voices.length} Stimmen insgesamt auf dem Gerät).`;
   const exact = v.lang.toLowerCase().startsWith(S.lang);
   return exact ? `Stimme: ${v.name}` : `Stimme: ${v.name} (${v.lang}, Ersatz – sehr ähnlich)`;
 }
